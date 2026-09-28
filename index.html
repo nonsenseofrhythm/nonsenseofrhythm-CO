@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Nonsense of Rhythm</title>
+<!-- 서체: 규정(2026-08-19) 그대로. 로고 Inter v3.019 · 영문 Helvetica(Adobe 킷) · 한글 Pretendard(같은 도메인) -->
+<link rel="stylesheet" href="https://use.typekit.net/rez7jaf.css">
+<link rel="preload" href="fonts/Inter-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:'NoR Inter';src:url(fonts/Inter-Bold.woff2) format('woff2');font-weight:700;font-display:block}
+@font-face{font-family:'NoR P';src:url(fonts/Pretendard-Regular.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'NoR P';src:url(fonts/Pretendard-Bold.woff2) format('woff2');font-weight:700;font-display:swap}
+:root{--ink:#111111;--paper:#FFFFFF;--grey:#8A8A8A;--ease:cubic-bezier(.33,1,.68,1)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--paper);color:var(--ink);
+  font-family:"helvetica-neue-lt-pro","Helvetica Neue",Helvetica,"NoR P",-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+canvas#world{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+.mark{font-family:'NoR Inter',sans-serif;font-weight:700;letter-spacing:-.11667em}
+.num{font-variant-numeric:tabular-nums}
+
+/* 가장자리 */
+#top{position:fixed;left:16px;right:16px;top:max(16px,env(safe-area-inset-top));display:flex;justify-content:space-between;align-items:baseline;pointer-events:none;z-index:5}
+#top .mark{font-size:17px}
+#top button{pointer-events:auto}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+#sound{font-size:13px;color:var(--grey);padding:6px 0 6px 12px}
+#sound[aria-pressed=true]{color:var(--ink)}
+#hint{position:fixed;left:16px;bottom:max(16px,env(safe-area-inset-bottom));font-size:12px;color:var(--grey);z-index:5;transition:opacity .3s var(--ease)}
+
+/* 가까이 가면 뜨는 이름표 */
+#near{position:fixed;left:50%;bottom:max(40px,calc(env(safe-area-inset-bottom) + 28px));transform:translate(-50%,8px);
+  opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease);z-index:6;
+  background:var(--ink);color:var(--paper);padding:12px 18px;font-size:14px;display:flex;gap:14px;align-items:baseline;white-space:nowrap}
+#near.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#near small{color:var(--grey);font-size:12px}
+
+/* 조이스틱 */
+#stick{position:fixed;width:88px;height:88px;margin:-44px 0 0 -44px;border:1px solid var(--ink);border-radius:50%;opacity:0;pointer-events:none;z-index:4}
+#stick i{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px;border-radius:50%;background:var(--ink)}
+#stick.on{opacity:.35}
+
+/* 작품 면 */
+#panel{position:fixed;inset:0;z-index:10;background:var(--paper);overflow-y:auto;-webkit-overflow-scrolling:touch;
+  transform:translateY(24px);opacity:0;pointer-events:none;transition:opacity .25s var(--ease),transform .25s var(--ease)}
+#panel.on{opacity:1;transform:none;pointer-events:auto}
+#panel .wrap{max-width:1080px;padding:max(16px,env(safe-area-inset-top)) 16px 64px}
+#panel header{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:32px}
+#panel header button{font-size:13px;color:var(--grey);padding:6px 0 6px 12px}
+#panel h1{font-size:clamp(40px,9vw,96px);font-weight:700;letter-spacing:-.02em;line-height:.95}
+#panel .meta{font-size:13px;color:var(--grey);margin-top:12px}
+#panel p{font-family:'NoR P',sans-serif;font-size:16px;line-height:1.6;margin:24px 0 32px;max-width:32em}
+#panel .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+#panel .grid.two{grid-template-columns:repeat(2,1fr)}
+#panel img,#panel video{width:100%;display:block;background:#f2f2f2}
+#panel .full{margin-bottom:8px}
+#panel a.go{display:inline-block;margin-top:32px;font-size:14px;border-bottom:1px solid var(--ink);padding-bottom:2px;color:var(--ink);text-decoration:none}
+#panel details{margin-top:64px;font-size:12px;color:var(--grey);line-height:1.7}
+#panel summary{cursor:pointer;list-style:none}
+@media (max-width:640px){#panel .grid{grid-template-columns:repeat(2,1fr)}}
+
+/* 로딩: 아홉 점이 하나씩 켜진다 */
+#load{position:fixed;inset:0;background:var(--paper);z-index:20;display:flex;align-items:center;justify-content:center;transition:opacity .3s var(--ease)}
+#load .dots{display:flex;gap:0}
+#load .dots i{width:7px;height:7px;border-radius:50%;background:#e4e4e4;transition:background .1s}
+#load .dots i.on{background:var(--ink)}
+</style>
+</head>
+<body>
+<canvas id="world"></canvas>
+
+<div id="top">
+  <span class="mark">Nonsense of Rhythm</span>
+  <button id="sound" aria-pressed="false">sound off</button>
+</div>
+<div id="hint">WASD · 방향키 · 드래그로 걷는다</div>
+<script>if(matchMedia('(pointer:coarse)').matches)document.getElementById('hint').textContent='화면을 끌어서 걷는다'</script>
+<button id="near"><span id="nearName"></span><small id="nearKey">enter</small></button>
+<div id="stick"><i></i></div>
+
+<section id="panel" aria-hidden="true"><div class="wrap">
+  <header><span class="mark" style="font-size:17px">Nonsense of Rhythm</span><button id="close">close</button></header>
+  <div id="panelBody"></div>
+  <details><summary>논센스오브리듬 · 사업자 정보</summary>
+    대표 최태준 · 사업자등록번호 869-18-02339<br>
+    통신판매업신고 제 2026-서울중구-1251 호<br>
+    서울특별시 중구 신당동 468 · hello@ninedots.co.kr · <a href="/privacy" style="color:inherit">개인정보 처리방침</a>
+  </details>
+</div></section>
+
+<div id="load"><div class="dots"></div></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ───────── 재료 경로 (배포 때 한 폴더로 모으면 여기만 고친다) ───────── */
+const A = p => encodeURI('assets/' + p);
+const ASSET = {
+  applicantCuts: ['6038','6057','6085','6094','6100','6104'].map(n=>A(`APPLICANT/concept_${n}.jpg`)),
+  applicantTeaser: A('APPLICANT/teaser.mp4'),
+  appShots: ['02_today','03_write','04_month'].map(n=>A(`ninedots/${n}.png`)),
+  motions: ['NoR_9Dots','NoR_NineRhythms','NoR_System'].map(n=>A(`motion/${n}.mp4`)),
+};
+
+/* ───────── 숫자 ───────── */
+const INK = 0x111111, PAPER = 0xffffff, GREY = 0x8a8a8a, RED = 0xdc1d09;
+const POS = [0,1,2,4,6,8,12,16,20];           // 아홉 점의 자리
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+/* ───────── 소리: 440Hz 틱 하나 ───────── */
+let AC = null, soundOn = false;
+function tick(freq = 440, gain = .15){
+  if(!soundOn || !AC) return;
+  const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + .001);
+  g.gain.exponentialRampToValueAtTime(.0001, t + .10);
+  o.connect(g).connect(AC.destination); o.start(t); o.stop(t + .11);
+}
+const soundBtn = document.getElementById('sound');
+soundBtn.onclick = () => {
+  soundOn = !soundOn;
+  if(soundOn){ AC = AC || new (window.AudioContext||window.webkitAudioContext)(); AC.resume(); tick(); }
+  soundBtn.setAttribute('aria-pressed', soundOn);
+  soundBtn.textContent = soundOn ? 'sound on' : 'sound off';
+};
+
+/* ───────── 장면 ───────── */
+const canvas = document.getElementById('world');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(PAPER);
+scene.fog = new THREE.Fog(PAPER, 22, 48);
+
+const camera = new THREE.PerspectiveCamera(38, 1, .1, 200);
+const CAM_OFFSET = new THREE.Vector3(0, 11, 12.5);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xdddddd, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(-6, 14, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left:-14, right:14, top:14, bottom:-14, near:1, far:40});
+sun.shadow.radius = 4;
+scene.add(sun, sun.target);
+
+// 바닥: 종이. 그림자만 받는다
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.ShadowMaterial({opacity:.10}));
+floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
+scene.add(floor);
+
+// 격자: 보이지 않을 만큼 옅은 점
+{
+  const g = new THREE.CircleGeometry(.035, 8); g.rotateX(-Math.PI/2);
+  const m = new THREE.MeshBasicMaterial({color:0xdadada});
+  const N = 41, step = 2, inst = new THREE.InstancedMesh(g, m, N*N), mat = new THREE.Matrix4();
+  let k = 0;
+  for(let i=0;i<N;i++) for(let j=0;j<N;j++){ mat.makeTranslation((i-20)*step, .002, (j-30)*step); inst.setMatrixAt(k++, mat); }
+  scene.add(inst);
+}
+
+const white = new THREE.MeshStandardMaterial({color:PAPER, roughness:.75});
+const ink   = new THREE.MeshStandardMaterial({color:INK, roughness:.6});
+function mesh(geo, mat = white){ const m = new THREE.Mesh(geo, mat); m.castShadow = m.receiveShadow = true; return m; }
+const at = (m, x, y, z) => (m.position.set(x, y, z), m);
+
+// 바닥 글자
+function floorText(text, {size = 120, font = '600 120px Inter', spacing = '-0.11667em', color = '#111', w = 8} = {}){
+  const c = document.createElement('canvas'), x = c.getContext('2d');
+  x.font = font; if('letterSpacing' in x) x.letterSpacing = spacing;
+  const tw = Math.ceil(x.measureText(text).width) + 40;
+  c.width = tw; c.height = size * 1.4;
+  x.font = font; if('letterSpacing' in x) x.letterSpacing = spacing;
+  x.fillStyle = color; x.textBaseline = 'middle'; x.fillText(text, 20, c.height/2);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  const h = w * c.height / c.width;
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false}));
+  p.rotation.x = -Math.PI/2; p.position.y = .004;
+  return p;
+}
+
+/* ───────── 사람: 흰 아바타 ───────── */
+const body = new THREE.Group();
+const torso = mesh(new THREE.CapsuleGeometry(.27, .48, 6, 16)); torso.position.y = 1.18;
+const head  = mesh(new THREE.SphereGeometry(.21, 24, 16));      head.position.y = 1.78;
+function limb(r, len, x, y){
+  const pivot = new THREE.Group(); pivot.position.set(x, y, 0);
+  const m = mesh(new THREE.CapsuleGeometry(r, len, 4, 10)); m.position.y = -(len/2 + r*.6);
+  pivot.add(m); body.add(pivot); return pivot;
+}
+const legL = limb(.1, .52, -.13, .82), legR = limb(.1, .52, .13, .82);
+const armL = limb(.075, .48, -.37, 1.47), armR = limb(.075, .48, .37, 1.47);
+body.add(torso, head);
+const player = new THREE.Group(); player.add(body);
+player.position.set(0, 0, 3.4);
+scene.add(player);
+
+/* ───────── 길: 아홉 점 (셋 · 셋 · 셋) ───────── */
+const DOT_Z0 = 1.6, DOT_STEP = 1.55;
+const dotOff = new THREE.MeshBasicMaterial({color:0xdedede});
+const dots = POS.map((p, i) => {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(.34, 40), dotOff.clone());
+  m.rotation.x = -Math.PI/2; m.position.set(0, .003, DOT_Z0 - p*DOT_STEP);
+  scene.add(m); return {m, lit:false, i};
+});
+
+// 입구 워드마크
+const word = floorText('Nonsense of Rhythm', {w:5.6}); word.position.set(0, .004, 6.2); scene.add(word);
+
+/* ───────── 세 곳: film · app · record ───────── */
+const stations = [];
+
+// film — 증명사진관 (APPLICANT). 이 사이트에서 유일한 색은 여기 커튼의 빨강
+{
+  const g = new THREE.Group();
+  g.add(at(mesh(new THREE.BoxGeometry(1.9, 2.5, 1.7)), 0,1.25,0));
+  g.add(at(mesh(new THREE.BoxGeometry(2.0, .12, 1.8)), 0,2.56,0));
+  const curtain = mesh(new THREE.PlaneGeometry(1.0, 1.9), new THREE.MeshStandardMaterial({color:RED, roughness:.9, side:THREE.DoubleSide}));
+  curtain.rotation.y = Math.PI/2; curtain.position.set(.952, 1.2, .25); g.add(curtain);
+  const slot = mesh(new THREE.BoxGeometry(.02, .5, .36), ink); slot.position.set(.96, 1.4, -.52); g.add(slot);
+  g.position.set(-4.6, 0, -2.0); g.rotation.y = -.75;
+  const t = floorText('film', {font:'700 120px helvetica-neue-lt-pro, Helvetica Neue, Helvetica', spacing:'0', w:1.6}); t.position.set(-2.8, .004, -.1);
+  scene.add(g, t);
+  stations.push({key:'film', name:'film — APPLICANT', obj:g, r:1.45, reach:3.2, curtain});
+}
+
+// app — 서 있는 전화기. 화면에 앱이 켜져 있다
+{
+  const g = new THREE.Group();
+  const slab = mesh(new THREE.BoxGeometry(1.35, 2.75, .14), ink); slab.position.y = 1.55; g.add(slab);
+  const scrMat = new THREE.MeshBasicMaterial({color:PAPER});
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.23, 2.63), scrMat); screen.position.set(0, 1.55, .071); g.add(screen);
+  // 화면: 스크린샷이 오면 그것, 없으면 아홉 점
+  {
+    const c = document.createElement('canvas'); c.width = 246; c.height = 526; const x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0,0,c.width,c.height); x.fillStyle = '#111';
+    POS.forEach(p => { x.beginPath(); x.arc(28 + p*9.5, 263, 6, 0, 7); x.fill(); });
+    scrMat.map = new THREE.CanvasTexture(c); scrMat.map.colorSpace = THREE.SRGBColorSpace; scrMat.needsUpdate = true;
+    new THREE.TextureLoader().load(ASSET.appShots[0], tex => { tex.colorSpace = THREE.SRGBColorSpace; scrMat.map = tex; scrMat.needsUpdate = true; });
+  }
+  const foot = mesh(new THREE.BoxGeometry(.9, .12, .6)); foot.position.y = .06; g.add(foot);
+  g.position.set(4.4, 0, -9.6); g.rotation.y = -.42;
+  const t = floorText('app', {font:'700 120px helvetica-neue-lt-pro, Helvetica Neue, Helvetica', spacing:'0', w:1.3}); t.position.set(2.6, .004, -7.6);
+  scene.add(g, t);
+  stations.push({key:'app', name:'app — nine dots', obj:g, r:1.0, reach:3.0});
+}
+
+// record — 메트로놈과 한 달을 묶은 종이 더미
+let metroArm, metroPhase = 0, metroLast = 0;
+{
+  const g = new THREE.Group();
+  const base = mesh(new THREE.CylinderGeometry(.35, .85, 1.9, 4, 1)); base.rotation.y = Math.PI/4; base.position.y = .95; g.add(base);
+  metroArm = new THREE.Group(); metroArm.position.set(0, .35, .45);
+  const rod = mesh(new THREE.BoxGeometry(.05, 1.9, .05), ink); rod.position.y = .95; metroArm.add(rod);
+  const weight = mesh(new THREE.BoxGeometry(.2, .16, .1), ink); weight.position.y = 1.4; metroArm.add(weight);
+  g.add(metroArm);
+  for(let i=0;i<9;i++){ const s = mesh(new THREE.BoxGeometry(1.2, .045, .85)); s.position.set(1.7 + (i%2)*.03, .03 + i*.05, .25 - (i%3)*.02); s.rotation.y = (i*37%9-4)*.012; g.add(s); }
+  g.position.set(-4.2, 0, -24.5); g.rotation.y = .3;
+  const t = floorText('record', {font:'700 120px helvetica-neue-lt-pro, Helvetica Neue, Helvetica', spacing:'0', w:2.3}); t.position.set(-2.0, .004, -21.6);
+  scene.add(g, t);
+  stations.push({key:'record', name:'record', obj:g, r:1.6, reach:3.4});
+}
+
+/* ───────── 입력 ───────── */
+const keys = {};
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if((e.code==='Enter'||e.code==='KeyE') && nearSt && !panelOpen) openPanel(nearSt.key);
+  if(e.code==='Escape' && panelOpen) closePanel();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('blur', () => { for(const k in keys) keys[k] = false; });
+
+const stickEl = document.getElementById('stick'), knob = stickEl.firstElementChild;
+const stick = {id:null, ox:0, oy:0, x:0, y:0};
+canvas.addEventListener('pointerdown', e => {
+  stick.id = e.pointerId; stick.ox = e.clientX; stick.oy = e.clientY; stick.x = stick.y = 0;
+  stickEl.style.left = e.clientX+'px'; stickEl.style.top = e.clientY+'px'; stickEl.classList.add('on');
+  knob.style.transform = ''; canvas.setPointerCapture(e.pointerId); hideHint();
+});
+canvas.addEventListener('pointermove', e => {
+  if(e.pointerId !== stick.id) return;
+  let dx = e.clientX - stick.ox, dy = e.clientY - stick.oy; const d = Math.hypot(dx, dy), R = 44;
+  if(d > R){ dx *= R/d; dy *= R/d; }
+  stick.x = dx/R; stick.y = dy/R; knob.style.transform = `translate(${dx}px,${dy}px)`;
+});
+const endStick = e => { if(e.pointerId !== stick.id) return; stick.id = null; stick.x = stick.y = 0; stickEl.classList.remove('on'); };
+canvas.addEventListener('pointerup', endStick); canvas.addEventListener('pointercancel', endStick);
+
+function readInput(){
+  let x = 0, z = 0;
+  if(keys.KeyW||keys.ArrowUp) z -= 1;  if(keys.KeyS||keys.ArrowDown) z += 1;
+  if(keys.KeyA||keys.ArrowLeft) x -= 1; if(keys.KeyD||keys.ArrowRight) x += 1;
+  if(x||z) hideHint();
+  x += stick.x; z += stick.y;
+  const l = Math.hypot(x, z); if(l > 1){ x /= l; z /= l; }
+  return {x, z, l:Math.min(l,1)};
+}
+const hintEl = document.getElementById('hint');
+let hinted = false; function hideHint(){ if(!hinted){ hinted = true; hintEl.style.opacity = 0; } }
+
+/* ───────── 작품 면 ───────── */
+const panel = document.getElementById('panel'), panelBody = document.getElementById('panelBody');
+let panelOpen = false;
+const PAGES = {
+  film: () => `
+    <h1>APPLICANT</h1>
+    <div class="meta num">film · 60.0s · 2026</div>
+    <p>증명사진관에서 사회의 규격에 맞춰지는 사람. 대사 없이.</p>
+    <video class="full" src="${ASSET.applicantTeaser}" muted playsinline controls preload="metadata"></video>
+    <div class="grid">${ASSET.applicantCuts.map(s=>`<img src="${s}" loading="lazy" alt="">`).join('')}</div>`,
+  app: () => `
+    <h1>nine dots</h1>
+    <div class="meta">app · iOS · 웹</div>
+    <p>하루를 아홉 개의 점으로 남기고 글을 곁들인다. 통계도 좋아요도 없다.</p>
+    <div class="grid">${ASSET.appShots.map(s=>`<img src="${s}" loading="lazy" alt="">`).join('')}</div>
+    <a class="go" href="https://ninedots.co.kr" target="_blank" rel="noopener">ninedots.co.kr</a>`,
+  record: () => `
+    <h1>record</h1>
+    <div class="meta">motion · notes · sound</div>
+    <p>어떻게 만들었나가 작품이 되는 곳. 아홉 점이 박자에 맞춰 나타난다.</p>
+    <div class="grid">${ASSET.motions.map(s=>`<video src="${s}" muted loop autoplay playsinline></video>`).join('')}</div>`,
+};
+function openPanel(k){
+  panelBody.innerHTML = PAGES[k]();
+  panel.scrollTop = 0; panel.classList.add('on'); panel.setAttribute('aria-hidden','false'); panelOpen = true;
+  for(const c in keys) keys[c] = false;
+  tick(440); tick(880, .06);
+}
+function closePanel(){
+  panel.classList.remove('on'); panel.setAttribute('aria-hidden','true'); panelOpen = false;
+  setTimeout(() => { if(!panelOpen) panelBody.innerHTML = ''; }, 260);
+}
+document.getElementById('close').onclick = closePanel;
+
+const nearEl = document.getElementById('near'), nearName = document.getElementById('nearName'), nearKey = document.getElementById('nearKey');
+const coarse = matchMedia('(pointer:coarse)').matches;
+nearKey.textContent = coarse ? 'tap' : 'enter';
+if(coarse) hintEl.textContent = '화면을 끌어서 걷는다';
+nearEl.onclick = () => nearSt && openPanel(nearSt.key);
+let nearSt = null;
+
+/* ───────── 걷기 ───────── */
+const vel = new THREE.Vector3();
+let facing = 0, walkPhase = 0, stepCount = 0, lastStepIdx = 0, moveAmt = 0;
+const SPEED = 4.2;
+
+// 발자국: 점 하나씩 찍히다 사라진다
+const prints = [];
+const printGeo = new THREE.CircleGeometry(.07, 12); printGeo.rotateX(-Math.PI/2);
+function footprint(side){
+  const m = new THREE.Mesh(printGeo, new THREE.MeshBasicMaterial({color:INK, transparent:true, opacity:.5, depthWrite:false}));
+  const s = Math.sin(facing), c = Math.cos(facing), off = side * .13;
+  m.position.set(player.position.x + c*off, .005, player.position.z - s*off);
+  scene.add(m); prints.push({m, t:0});
+}
+
+function step(side){
+  stepCount++;
+  footprint(side);
+  // 엇박 하나: 아홉 번째 발소리만 늘 조금 늦다
+  if(stepCount % 9 === 0) setTimeout(() => tick(440, .1), 70); else tick(440, .1);
+}
+
+/* ───────── 루프 ───────── */
+const clock = new THREE.Clock();
+const camTarget = new THREE.Vector3();
+function frame(){
+  const dt = Math.min(clock.getDelta(), 1/30), T = clock.elapsedTime;
+
+  const inp = panelOpen ? {x:0,z:0,l:0} : readInput();
+  const want = new THREE.Vector3(inp.x, 0, inp.z).multiplyScalar(SPEED);
+  vel.lerp(want, 1 - Math.exp(-dt * 10));
+  player.position.addScaledVector(vel, dt);
+
+  // 부딪힘: 세 곳은 둥근 벽
+  for(const st of stations){
+    const dx = player.position.x - st.obj.position.x, dz = player.position.z - st.obj.position.z, d = Math.hypot(dx, dz), R = st.r + .35;
+    if(d < R && d > 1e-4){ player.position.x += dx/d*(R-d); player.position.z += dz/d*(R-d); }
+  }
+  player.position.x = clamp(player.position.x, -18, 18);
+  player.position.z = clamp(player.position.z, -38, 12);
+
+  const speed = vel.length();
+  moveAmt += ((speed > .25 ? 1 : 0) - moveAmt) * (1 - Math.exp(-dt*8));
+  if(speed > .25){
+    const target = Math.atan2(vel.x, vel.z);
+    let d = target - facing; d = Math.atan2(Math.sin(d), Math.cos(d));
+    facing += d * (1 - Math.exp(-dt * 12));
+  }
+  player.rotation.y = facing;
+
+  // 걸음: 거리만큼 위상이 돈다. 반 바퀴마다 발이 닿는다
+  walkPhase += speed * dt * 2.3;
+  const idx = Math.floor(walkPhase / Math.PI);
+  if(idx !== lastStepIdx && speed > .6){ step(idx % 2 ? 1 : -1); }
+  lastStepIdx = idx;
+
+  const sw = Math.sin(walkPhase) * .62 * moveAmt;
+  legL.rotation.x = sw; legR.rotation.x = -sw;
+  armL.rotation.x = -sw * .8; armR.rotation.x = sw * .8;
+  armL.rotation.z = -.06; armR.rotation.z = .06;
+  body.position.y = Math.abs(Math.cos(walkPhase)) * .06 * moveAmt + Math.sin(T*1.6) * .012 * (1-moveAmt);
+  body.rotation.x = .06 * moveAmt;
+
+  // 아홉 점: 밟으면 검게 켜지고 틱 하나. 자리의 간격에 따라 음이 달라진다
+  for(const d of dots){
+    if(d.lit) continue;
+    if(Math.hypot(player.position.x - d.m.position.x, player.position.z - d.m.position.z) < .5){
+      d.lit = true; d.t = 0; d.m.material.color.set(INK);
+      const gap = d.i ? (POS[d.i] - POS[d.i-1]) : 1;
+      tick(clamp(440 * (1 / gap), 110, 1760), .14);
+    }
+  }
+  for(const d of dots){ if(d.lit && d.t < 1){ d.t = Math.min(1, d.t + dt/.25); const s = 1 + (1-easeOut(d.t))*.35; d.m.scale.set(s,s,s); } }
+
+  // 발자국이 옅어진다
+  for(let i = prints.length-1; i >= 0; i--){
+    const p = prints[i]; p.t += dt; p.m.material.opacity = .5 * (1 - p.t/2.4);
+    if(p.t > 2.4){ scene.remove(p.m); p.m.material.dispose(); prints.splice(i,1); }
+  }
+
+  // 메트로놈: 72bpm. 가까이 있으면 소리가 난다
+  metroPhase += dt * (72/60) * Math.PI;
+  metroArm.rotation.z = Math.sin(metroPhase) * .38;
+  const mIdx = Math.floor(metroPhase / Math.PI);
+  const rec = stations[2];
+  if(mIdx !== metroLast){ metroLast = mIdx; if(player.position.distanceTo(rec.obj.position) < 6) tick(440, .05); }
+
+  // 커튼이 사람이 다가오면 살짝 흔들린다
+  const film = stations[0];
+  film.curtain.rotation.z = Math.sin(T*2.1) * .015 * clamp(4 - player.position.distanceTo(film.obj.position), 0, 1);
+
+  // 가까운 곳
+  let best = null, bd = 1e9;
+  for(const st of stations){ const d = player.position.distanceTo(st.obj.position); if(d < st.reach && d < bd){ bd = d; best = st; } }
+  if(best !== nearSt){
+    nearSt = best;
+    if(best){ nearName.textContent = best.name; nearEl.classList.add('on'); tick(660, .06); } else nearEl.classList.remove('on');
+  }
+
+  // 카메라: 비스듬히 위에서 따라온다
+  camTarget.copy(player.position).add(CAM_OFFSET);
+  camera.position.lerp(camTarget, 1 - Math.exp(-dt * 4));
+  camera.lookAt(camera.position.x, 0, camera.position.z - CAM_OFFSET.z + (-1.2));
+  sun.position.set(player.position.x - 6, 14, player.position.z + 6);
+  sun.target.position.copy(player.position);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h;
+  camera.fov = w < h ? 52 : 38;          // 세로 화면에서는 조금 넓게
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+camera.position.copy(player.position).add(CAM_OFFSET);
+
+/* ───────── 로딩: 아홉 점이 하나씩 켜진다 ───────── */
+const loadEl = document.getElementById('load'), ld = loadEl.firstElementChild;
+POS.forEach((p,i) => { const e = document.createElement('i'); e.style.marginLeft = i ? ((POS[i]-POS[i-1])*5 - 7 + 7) + 'px' : 0; ld.appendChild(e); });
+const fontsReady = document.fonts.load('600 120px Inter').catch(()=>{});
+POS.forEach((p,i) => setTimeout(() => ld.children[i].classList.add('on'), 150 + p*25));
+Promise.all([fontsReady, new Promise(r => setTimeout(r, 150 + 20*25 + 200))]).then(() => {
+  // 글자가 폰트로 그려지도록 다시 그린다
+  scene.remove(word);
+  const w2 = floorText('Nonsense of Rhythm', {w:5.6}); w2.position.copy(word.position); scene.add(w2);
+  loadEl.style.opacity = 0; setTimeout(() => loadEl.remove(), 320);
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>

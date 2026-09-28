@@ -1,0 +1,11 @@
+# Helvetica 는 Adobe 킷 링크로만 쓴다. 폰트 파일을 저장소에 올리면 라이선스 위반.
+*Helvetica*
+*helvetica*
+*.otf
+*.ttf
+# 비밀값은 저장소에 올리지 않는다
+.env
+.env.*
+*.key
+*.pem
+.DS_Store
